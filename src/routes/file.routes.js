@@ -18,17 +18,28 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Configure storage
+// Configure storage with public access mode
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'cloudprint/files',
     allowed_formats: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'],
-    resource_type: 'auto'
+    resource_type: 'auto',
+    access_mode: 'public' // This makes files publicly accessible
   }
 });
 
 const upload = multer({ storage: storage });
+
+// Generate signed URL for printing (optional - for private files)
+const getSignedUrl = (publicId) => {
+  return cloudinary.url(publicId, {
+    resource_type: 'raw',
+    secure: true,
+    sign_url: true,
+    expires_at: Math.floor(Date.now() / 1000) + 300 // 5 minutes expiry
+  });
+};
 
 router.post('/upload', authenticate, upload.single('file'), async (req, res) => {
   try {
@@ -58,7 +69,8 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
       size: req.file.size,
       fileUrl: req.file.path,
       thumbnailUrl: req.file.path,
-      pageCount: 1
+      pageCount: 1,
+      publicId: req.file.filename // Store public ID for signed URLs
     });
 
     await file.save();
@@ -122,6 +134,39 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// GET /api/files/:id/print-url - Get signed URL for printing
+router.get('/:id/print-url', authenticate, async (req, res) => {
+  try {
+    const file = await File.findOne({ 
+      _id: req.params.id, 
+      userId: req.userId, 
+      isDeleted: false 
+    });
+    
+    if (!file) {
+      return res.status(404).json({ success: false, message: 'File not found' });
+    }
+    
+    // Extract public ID from fileUrl
+    const urlParts = file.fileUrl.split('/');
+    const filename = urlParts[urlParts.length - 1].split('.')[0];
+    const publicId = `cloudprint/files/${filename}`;
+    
+    // Generate signed URL that expires in 5 minutes
+    const signedUrl = cloudinary.url(publicId, {
+      resource_type: 'raw',
+      secure: true,
+      sign_url: true,
+      expires_at: Math.floor(Date.now() / 1000) + 300
+    });
+    
+    res.json({ success: true, data: { url: signedUrl } });
+  } catch (error) {
+    console.error('Generate print URL error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // DELETE /api/files/:id
 router.delete('/:id', authenticate, async (req, res) => {
   try {
@@ -129,6 +174,12 @@ router.delete('/:id', authenticate, async (req, res) => {
     if (!file) {
       return res.status(404).json({ success: false, message: 'File not found' });
     }
+    
+    // Delete from Cloudinary if needed
+    if (file.publicId) {
+      await cloudinary.uploader.destroy(file.publicId);
+    }
+    
     file.isDeleted = true;
     await file.save();
     res.json({ success: true, message: 'File deleted successfully' });
