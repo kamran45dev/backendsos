@@ -100,6 +100,15 @@ console.log('- NODE_ENV:', process.env.NODE_ENV);
 console.log('- PORT:', PORT);
 console.log('- Cloudinary configured:', !!process.env.CLOUDINARY_CLOUD_NAME);
 
+// Debug endpoint to check if server is receiving requests
+app.get('/api/debug', (req, res) => {
+  res.json({ 
+    message: 'Server is working', 
+    routes: ['/api/auth', '/api/files', '/api/print', '/api/balance', '/api/admin'],
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Connect to database and start server
 connectDB().then(() => {
   app.listen(PORT, '0.0.0.0', () => {
