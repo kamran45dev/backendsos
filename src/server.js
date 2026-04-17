@@ -108,6 +108,10 @@ app.get('/api/debug', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+// Test endpoint
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Backend API is reachable', timestamp: new Date().toISOString() });
+});
 
 // Connect to database and start server
 connectDB().then(() => {
