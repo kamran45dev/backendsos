@@ -1,45 +1,38 @@
 import express from 'express';
 import multer from 'multer';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
-import { v2 as cloudinary } from 'cloudinary';
-import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { authenticate } from '../middleware/auth.js';
 import { File } from '../models/index.js';
 import { validateFile } from '../utils/fileValidator.js';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
+// Ensure uploads directory exists
+const uploadDir = path.join(__dirname, '../../uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-// Configure storage with public access mode
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'cloudprint/files',
-    allowed_formats: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'],
-    resource_type: 'auto',
-    access_mode: 'public' // This makes files publicly accessible
+// Local storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-const upload = multer({ storage: storage });
-
-// Generate signed URL for printing (optional - for private files)
-const getSignedUrl = (publicId) => {
-  return cloudinary.url(publicId, {
-    resource_type: 'raw',
-    secure: true,
-    sign_url: true,
-    expires_at: Math.floor(Date.now() / 1000) + 300 // 5 minutes expiry
-  });
-};
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
 
 router.post('/upload', authenticate, upload.single('file'), async (req, res) => {
   try {
@@ -54,11 +47,11 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
     });
 
     if (!validation.valid) {
-      if (req.file.public_id) {
-        await cloudinary.uploader.destroy(req.file.public_id);
-      }
+      fs.unlinkSync(req.file.path);
       return res.status(400).json({ success: false, errors: validation.errors });
     }
+
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
 
     const file = new File({
       userId: req.userId,
@@ -67,10 +60,9 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
       fileType: validation.fileType,
       mimeType: req.file.mimetype,
       size: req.file.size,
-      fileUrl: req.file.path,
-      thumbnailUrl: req.file.path,
-      pageCount: 1,
-      publicId: req.file.filename // Store public ID for signed URLs
+      fileUrl: fileUrl,
+      thumbnailUrl: fileUrl,
+      pageCount: 1
     });
 
     await file.save();
@@ -96,7 +88,6 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
   }
 });
 
-// GET /api/files
 router.get('/', authenticate, async (req, res) => {
   try {
     const { fileType = 'all', search = '', page = 1, limit = 20 } = req.query;
@@ -134,40 +125,6 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/files/:id/print-url - Get signed URL for printing
-router.get('/:id/print-url', authenticate, async (req, res) => {
-  try {
-    const file = await File.findOne({ 
-      _id: req.params.id, 
-      userId: req.userId, 
-      isDeleted: false 
-    });
-    
-    if (!file) {
-      return res.status(404).json({ success: false, message: 'File not found' });
-    }
-    
-    // Extract public ID from fileUrl
-    const urlParts = file.fileUrl.split('/');
-    const filename = urlParts[urlParts.length - 1].split('.')[0];
-    const publicId = `cloudprint/files/${filename}`;
-    
-    // Generate signed URL that expires in 5 minutes
-    const signedUrl = cloudinary.url(publicId, {
-      resource_type: 'raw',
-      secure: true,
-      sign_url: true,
-      expires_at: Math.floor(Date.now() / 1000) + 300
-    });
-    
-    res.json({ success: true, data: { url: signedUrl } });
-  } catch (error) {
-    console.error('Generate print URL error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// DELETE /api/files/:id
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const file = await File.findOne({ _id: req.params.id, userId: req.userId, isDeleted: false });
@@ -175,9 +132,11 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ success: false, message: 'File not found' });
     }
     
-    // Delete from Cloudinary if needed
-    if (file.publicId) {
-      await cloudinary.uploader.destroy(file.publicId);
+    // Delete physical file
+    const filename = file.fileUrl.split('/').pop();
+    const filePath = path.join(uploadDir, filename);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
     
     file.isDeleted = true;
