@@ -4,17 +4,12 @@ import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { connectDB } from './config/database.js';
 import authRoutes from './routes/auth.routes.js';
 import fileRoutes from './routes/file.routes.js';
 import printRoutes from './routes/print.routes.js';
 import balanceRoutes from './routes/balance.routes.js';
 import adminRoutes from './routes/admin.routes.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -72,9 +67,6 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
-
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check
 app.get('/health', (req, res) => {
