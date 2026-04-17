@@ -8,13 +8,13 @@ import { validateFile } from '../utils/fileValidator.js';
 
 const router = express.Router();
 
-// Cloudinary storage engine with public access mode
+// Cloudinary storage engine with public access mode and auto resource_type
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'cloudprint/files',
     allowed_formats: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'],
-    resource_type: 'auto',
+    resource_type: 'auto',        // Critical for .docx, .doc, .ppt, etc.
     access_mode: 'public',
     public_id: (req, file) => `${Date.now()}-${file.originalname.split('.')[0]}`,
   },
@@ -22,7 +22,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
 
 // POST /api/files/upload
@@ -32,6 +32,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
+    // Validate file type, size, etc.
     const validation = validateFile({
       originalname: req.file.originalname,
       mimetype: req.file.mimetype,
@@ -39,12 +40,14 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
     });
 
     if (!validation.valid) {
+      // If validation fails, delete the file from Cloudinary
       if (req.file.public_id) {
         await cloudinary.uploader.destroy(req.file.public_id);
       }
       return res.status(400).json({ success: false, errors: validation.errors });
     }
 
+    // Create database record
     const file = new File({
       userId: req.userId,
       filename: req.file.originalname,
@@ -52,7 +55,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
       fileType: validation.fileType,
       mimeType: req.file.mimetype,
       size: req.file.size,
-      fileUrl: req.file.path,
+      fileUrl: req.file.path,      // Cloudinary provides full HTTPS URL
       thumbnailUrl: req.file.path,
       pageCount: 1,
     });
@@ -131,7 +134,7 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ success: false, message: 'File not found' });
     }
 
-    // Extract public_id from fileUrl
+    // Extract public_id from Cloudinary URL
     const urlParts = file.fileUrl.split('/');
     const filenameWithExt = urlParts[urlParts.length - 1];
     const publicId = `cloudprint/files/${filenameWithExt.split('.')[0]}`;
