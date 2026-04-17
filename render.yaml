@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: cloudprint-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: ADMIN_ACTION_CODE
+        sync: false
+      - key: COST_PER_PAGE_BW
+        value: 0.08
+      - key: COST_PER_PAGE_COLOR
+        value: 0.25
+      - key: A3_MULTIPLIER
+        value: 1.5
