@@ -51,7 +51,8 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
       return res.status(400).json({ success: false, errors: validation.errors });
     }
 
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    // Use relative URL (will work with both HTTP and HTTPS)
+    const fileUrl = `/uploads/${req.file.filename}`;
 
     const file = new File({
       userId: req.userId,
