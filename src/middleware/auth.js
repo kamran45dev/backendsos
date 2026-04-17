@@ -66,6 +66,6 @@ export const generateToken = (userId) => {
   return jwt.sign(
     { userId },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '7d' }
+    { expiresIn: '3650d' } // 10 years, practically no expiration
   );
 };
