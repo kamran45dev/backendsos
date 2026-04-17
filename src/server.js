@@ -95,6 +95,11 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 
+console.log('🔧 Server configuration check:');
+console.log('- NODE_ENV:', process.env.NODE_ENV);
+console.log('- PORT:', PORT);
+console.log('- Cloudinary configured:', !!process.env.CLOUDINARY_CLOUD_NAME);
+
 // Connect to database and start server
 connectDB().then(() => {
   app.listen(PORT, '0.0.0.0', () => {
