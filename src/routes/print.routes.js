@@ -42,7 +42,6 @@ router.post(
     try {
       const { fileId, settings } = req.body;
 
-      // Get file
       const file = await File.findOne({
         _id: fileId,
         userId: req.userId,
@@ -56,7 +55,6 @@ router.post(
         });
       }
 
-      // Validate and parse page range
       const pages = settings.pages || 'all';
       const pageValidation = validatePageRange(pages, file.pageCount);
       
@@ -67,7 +65,6 @@ router.post(
         });
       }
 
-      // Calculate cost
       const calculation = calculatePrintCost({
         pageCount: pageValidation.pages,
         color: settings.color || 'bw',
@@ -118,14 +115,15 @@ router.post(
   authenticate,
   [
     body('fileId').isMongoId().withMessage('Valid file ID is required'),
+    body('pageCount').optional().isInt({ min: 1 }),
+    body('cost').optional().isFloat({ min: 0 }),
     body('settings').isObject().withMessage('Settings object is required'),
     handleValidationErrors
   ],
   async (req, res) => {
     try {
-      const { fileId, settings } = req.body;
+      const { fileId, settings, pageCount: frontendPageCount, cost: frontendCost } = req.body;
 
-      // Get file
       const file = await File.findOne({
         _id: fileId,
         userId: req.userId,
@@ -139,60 +137,61 @@ router.post(
         });
       }
 
-      // Validate and parse page range
-      const pages = settings.pages || 'all';
-      const pageValidation = validatePageRange(pages, file.pageCount);
+      // Use frontend values if provided, otherwise calculate
+      let pageCount = frontendPageCount;
+      let totalCost = frontendCost;
       
-      if (!pageValidation.valid) {
-        return res.status(400).json({
-          success: false,
-          message: pageValidation.error
+      if (!pageCount || !totalCost) {
+        const pages = settings.pages || 'all';
+        const pageValidation = validatePageRange(pages, file.pageCount);
+        
+        if (!pageValidation.valid) {
+          return res.status(400).json({
+            success: false,
+            message: pageValidation.error
+          });
+        }
+        
+        pageCount = pageValidation.pages;
+        
+        const calculation = calculatePrintCost({
+          pageCount: pageCount,
+          color: settings.color || 'bw',
+          paperSize: settings.paperSize || 'A4',
+          layout: settings.layout || 'full'
         });
+        
+        totalCost = calculation.totalCost;
       }
 
-      // Calculate cost
-      const calculation = calculatePrintCost({
-        pageCount: pageValidation.pages,
-        color: settings.color || 'bw',
-        paperSize: settings.paperSize || 'A4',
-        layout: settings.layout || 'full'
-      });
-
-      // Check balance
-      if (req.user.balance < calculation.totalCost) {
+      if (req.user.balance < totalCost) {
         return res.status(400).json({
           success: false,
           message: 'Insufficient balance',
           data: {
-            required: calculation.totalCost,
+            required: totalCost,
             available: req.user.balance,
-            shortfall: calculation.totalCost - req.user.balance
+            shortfall: totalCost - req.user.balance
           }
         });
       }
 
-      // Deduct balance
-      await req.user.deductBalance(calculation.totalCost);
-
-      // Increment pages printed
-      await req.user.incrementPagesPrinted(calculation.pageCount);
-
-      // Increment file print count
+      await req.user.deductBalance(totalCost);
+      await req.user.incrementPagesPrinted(pageCount);
       await file.incrementPrintCount();
 
-      // Create print job record
       const printJob = new PrintJob({
         userId: req.userId,
         fileId: file._id,
         filename: file.filename,
         settings: {
-          pages,
+          pages: settings.pages || 'all',
           paperSize: settings.paperSize || 'A4',
           layout: settings.layout || 'full',
           color: settings.color || 'bw'
         },
-        pageCount: calculation.pageCount,
-        cost: calculation.totalCost,
+        pageCount: pageCount,
+        cost: totalCost,
         status: 'completed',
         printedAt: new Date()
       });
@@ -212,7 +211,7 @@ router.post(
             settings: printJob.settings,
             printedAt: printJob.printedAt
           },
-          remainingBalance: req.user.balance - calculation.totalCost
+          remainingBalance: req.user.balance - totalCost
         }
       });
     } catch (error) {

@@ -36,7 +36,6 @@ export const calculatePrintCost = ({ pageCount, color, paperSize, layout }) => {
   const pricePerPage = PRICING[paperSize][color];
   const layoutMultiplier = LAYOUT_MULTIPLIERS[layout] || 1;
   
-  // For layouts with multiple slides per page, reduce cost proportionally
   const adjustedPageCount = Math.ceil(pageCount * layoutMultiplier);
   const totalCost = adjustedPageCount * pricePerPage;
   
