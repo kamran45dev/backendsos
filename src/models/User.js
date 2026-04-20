@@ -50,7 +50,7 @@ userSchema.index({ role: 1 });
 
 // Virtual for formatted balance
 userSchema.virtual('formattedBalance').get(function() {
-  return `$${this.balance.toFixed(2)}`;
+  return `RM${this.balance.toFixed(2)}`;
 });
 
 // Method to compare password

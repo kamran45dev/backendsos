@@ -65,7 +65,7 @@ printJobSchema.index({ createdAt: -1 });
 
 // Virtual for formatted cost
 printJobSchema.virtual('formattedCost').get(function() {
-  return `$${this.cost.toFixed(2)}`;
+  return `RM${this.cost.toFixed(2)}`;
 });
 
 // Static method to get print history

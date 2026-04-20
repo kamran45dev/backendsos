@@ -113,7 +113,7 @@ router.get('/transactions', authenticate, async (req, res) => {
       type: 'topup',
       description: `Redeemed code: ${r.code}`,
       amount: r.value,
-      formattedAmount: `+$${r.value.toFixed(2)}`,
+      formattedAmount: `+RM${r.value.toFixed(2)}`,
       date: r.usedAt
     }));
 
